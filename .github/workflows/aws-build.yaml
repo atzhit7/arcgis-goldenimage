@@ -1,0 +1,166 @@
+name: Manual Action to build goldenimage to Amazon EC2
+# on:
+#   push:
+#     paths:
+#       - 'envs/amazon/*.pkr.hcl'
+#       - 'envs/amazon/*.pkrvars.hcl'
+#       - 'envs/amazon/*.yaml'
+##########################
+### Run Manually       ###
+##########################
+on: 
+  workflow_dispatch:
+    inputs:
+      target:
+        type: choice
+        description: create target
+        options: 
+        - dev
+        - prod
+      region:
+        type: choice
+        description: create at region
+        options:
+        - ap-southeast-1
+        - ap-southeast-2
+        - ap-northeast-1
+        - ap-northeast-2
+      windowsversion:
+        type: choice
+        description: which version you want to create
+        options:
+        - 2019
+        - 2022
+
+env:
+  # set with your preferred AWS region, e.g. us-west-1
+  AWS_REGION: ${{ github.event.inputs.region }}
+  # set with GitHub Actions role name
+  AWS_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-action-to-ec2
+  ROLLE_SESSION_NAME: GithubAction-PackerBuild
+  PACKER_VERSION: 1.8.1
+  PYTHON_VERSION: 3.8
+  ANSIBLE_VERSION: 5.9.0
+  EGIHS_TARGET: ${{ github.event.inputs.target }}
+  EGIHS_WINDOW_VERSION: ${{ github.event.inputs.windowsversion }}
+
+defaults:
+  run:
+    working-directory: ./packer/
+
+jobs:
+  packer:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-20.04
+    # These permissions are needed to interact with GitHub's OIDC Token endpoint.
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+    steps:
+      - uses: actions/checkout@v2
+        id: checkout
+        # if manual-run, please comment out the following
+        # if: contains(toJSON(github.event.commits.*.message), '@builddev-aws')
+        with:
+          submodules: true  # Fetch submodules
+          fetch-depth: 0    # Fetch all history for .GitInfo and .Lastmod
+      
+      - name: Configure AWS credentials from IAM Role for Github Action
+        if: ${{ !env.ACT }}
+        id: configure_aws_credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: ${{ env.ROLLE_SESSION_NAME }}-${{ github.run_id }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+      
+      - name: Configure AWS credentials from IAM Role for Local
+        if: ${{ env.ACT }}
+        id: configure_aws_credentials_local
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Set up Packer
+        uses: hashicorp-contrib/setup-packer@v1
+        with:
+          packer-version: ${{ env.PACKER_VERSION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Set up Ansible dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install botocore boto3 pywinrm
+      
+      - name: Set up Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible==${{ env.ANSIBLE_VERSION }} ansible-lint
+
+      - name: install awscli
+        id: install-aws-cli
+        uses: unfor19/install-aws-cli-action@v1.0.3
+        with:
+          version: 2
+
+      - name: Download privatekey ssm
+        run: aws ssm get-parameter --name "sampleprivatekey" --with-decryption | jq -r .Parameter.Value > ./privatekey
+        working-directory: ./ansible/
+      
+      # - name: Packer validate
+      #   id: packer_validate
+      #   run: 'packer validate -syntax-only -var-file aws-${{ env.EGIHS_TARGET }}.pkrvars.hcl -var region=${{ env.AWS_REGION }} aws.pkr.hcl'
+      #   working-directory: ./packer/
+
+      # - name: Packer build
+      #   continue-on-error: true
+      #   id: packer_build
+      #   if: ${{ steps.packer_validate.outcome == 'success' }}
+      #   run: 'packer build -color=false -on-error=abort -var-file aws-${{ env.EGIHS_TARGET }}.pkrvars.hcl -var region=${{ env.AWS_REGION }} aws.pkr.hcl'
+
+      # Development Job
+      - name: Packer validate for dev
+        id: packer_validate_dev
+        run: 'packer validate -syntax-only -var-file aws-${{ env.EGIHS_TARGET }}.pkrvars.hcl -var region=${{ env.AWS_REGION }} -only ${{ env.EGIHS_TARGET }}-windowsserver${{ env.EGIHS_WINDOW_VERSION }}.* aws.pkr.hcl'
+        working-directory: ./packer/
+        if: ${{ env.EGIHS_TARGET == 'dev'}}
+
+      - name: Packer build for dev
+        continue-on-error: true
+        id: packer_build_dev
+        run: 'packer build -color=false -on-error=abort -var-file aws-${{ env.EGIHS_TARGET }}.pkrvars.hcl -var region=${{ env.AWS_REGION }} -only ${{ env.EGIHS_TARGET }}-windowsserver${{ env.EGIHS_WINDOW_VERSION }}.* aws.pkr.hcl'
+        if: steps.packer_validate_dev.outcome == 'success'
+        # if: ${{ steps.packer_validate_dev.outcome == 'success' }}
+
+      # Production Job
+      - name: Packer validate for prod
+        id: packer_validate
+        run: 'packer validate -syntax-only -var-file aws.pkrvars.hcl -var region=${{ env.AWS_REGION }} -only windowsserver${{ env.EGIHS_WINDOW_VERSION }}.* aws.pkr.hcl'
+        working-directory: ./packer/
+        if: ${{ env.EGIHS_TARGET == 'prod'}}
+
+      - name: Packer build for prod
+        continue-on-error: true
+        id: packer_build
+        run: 'packer build -color=false -on-error=abort -var-file aws.pkrvars.hcl -var region=${{ env.AWS_REGION }} -only windowsserver${{ env.EGIHS_WINDOW_VERSION }}.* aws.pkr.hcl'
+        if: steps.packer_validate.outcome == 'success'
+        # if: ${{ steps.packer_validate.outcome == 'success' }}
+
+      - name: check if there is a crash log with unexcepted error
+        id: file_check
+        run: |
+          $existing = Test-Path -Path ./crash.log
+          Write-Host "::set-output name=existing::$existing"
+        shell: pwsh
+
+      - name: Error handling
+        if: ${{ steps.file_check.outputs.existing == 'True' }}
+        run: aws s3 cp ./crash.log s3://egihs-packer-log/

@@ -1,0 +1,18 @@
+---
+- name: Replace arcgis serivce unit file
+  replace:
+    path: "{{ service_unit_path }}"
+    regexp: ^#?# TasksMax=512$
+    replace: TaskMax=512
+    backup: yes
+
+- name: copy arcgis service unit file
+  copy:
+    src: "{{ service_unit_path }}"
+    dest: "{{ service_unit_dest_path }}"
+    mode: 0600
+    owner: root
+    group: root
+    force: no
+    remote_src: yes
+  notify: restart arcgis service

@@ -1,0 +1,22 @@
+---
+- name: health check arcgis server service
+  uri:
+    url: "http://{{ hostname }}:{{ arcgisports[0] }}"
+    return_content: yes
+    validate_certs: no
+  register: _result
+  until: _result.status == 200
+  retries: 60 # 720 * 5 seconds = 1hour (60*60/5)
+  delay: 5 # Every 5 seconds
+
+- name: create an initial site
+  shell: "{{ createsite_shell }}"
+  become_user: "{{ arcgis_service_account }}"
+  register: createsiteresult
+  args:
+    chdir: "{{ createsite_shell_location }}"
+    executable: /bin/bash
+
+- name: check site result
+  debug:
+    msg: "{{ createsiteresult.stdout }}"

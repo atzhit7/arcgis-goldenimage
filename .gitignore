@@ -1,0 +1,35 @@
+# packer Cache objects
+packer_cache/
+
+# packer general
+# *.pkrvars.hcl
+
+# For built boxes
+*.box
+.vagrant
+
+# key_info
+*keypair*
+
+#authorized_keys
+*id_rsa*
+*privatekey*
+
+# ansible files
+*.retry
+
+.python-version
+.ruby-version
+vendor/
+.bundle
+
+*.pem
+
+# for terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+act-build.yaml
+testingpwsh.yaml

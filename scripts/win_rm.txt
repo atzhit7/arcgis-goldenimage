@@ -1,0 +1,22 @@
+<powershell>
+winrm quickconfig -q
+winrm set winrm/config '@{MaxTimeoutms="3600000"}'
+winrm set winrm/config/winrs '@{MaxMemoryPerShellMB="800"}'
+winrm set winrm/config/service '@{AllowUnencrypted="true"}'
+winrm set winrm/config/service/auth '@{Basic="true"}'
+winrm quickconfig -quiet
+winrm quickconfig -transport:http
+
+netsh advfirewall firewall add rule name="WinRM 5985" protocol=TCP dir=in localport=5985 action=allow
+netsh advfirewall firewall add rule name="WinRM 5986" protocol=TCP dir=in localport=5986 action=allow
+
+net stop winrm
+sc config winrm start=auto
+net start winrm
+
+Initialize-Disk -Number 1 -PartitionStyle "MBR"
+New-Partition -DiskNumber 1 -UseMaximumSize -IsActive -AssignDriveLetter
+Format-Volume -DriveLetter d -Confirm:$FALSE
+
+Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope LocalMachine
+</powershell>

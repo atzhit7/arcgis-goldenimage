@@ -40,8 +40,7 @@ If you run action through GitHub Action, prepare the following:
 
 2. Prepare AWS IAM Role for Github Action and configure your GitHub Action
 
-    [GitHub AWS oidc settings]
-    (https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+    [GitHub AWS oidc settings](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
 
 3. Prepare key pair file in parameter store.
 
@@ -217,7 +216,23 @@ This workflow has three input parameters:
     * windowsversion -> windows server 2019 base image/windows server 2022 base image source
 
         Choise the version you want to create.
+---
+GitHub Action Workflow environments:
 
+    ```yaml
+    env:
+        AWS_REGION: ${{ github.event.inputs.region }}
+        # set with GitHub Actions role name
+        AWS_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/YOURROLENAME
+        ROLLE_SESSION_NAME: SESSIONNAME
+        PACKER_VERSION: 1.8.1
+        PYTHON_VERSION: 3.8
+        ANSIBLE_VERSION: 5.9.0
+        EGIHS_TARGET: ${{ github.event.inputs.target }}
+        EGIHS_WINDOW_VERSION: ${{ github.event.inputs.windowsversion }}
+    ```
+    
+---
 Packer validate and build actions are the following.
 
 * Packer validate for development ami:
